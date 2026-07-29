@@ -1,0 +1,19 @@
+MirrorSpeaker installation and privacy notice
+=============================================
+
+MirrorSpeaker has no telemetry, advertising, user accounts, or
+MirrorSpeaker-operated cloud service.
+
+MirrorSpeaker needs the Microsoft .NET Desktop Runtime 10 (x64). If it is
+missing, Setup waits until you select Install, then downloads version 10.0.10
+directly from Microsoft, verifies the download, and runs Microsoft's installer.
+The Microsoft runtime is a system component, so Windows may ask for
+administrator permission. Nothing is downloaded when a compatible runtime is
+already installed.
+
+AirPlay receiver-engine downloads, local-network access, and Windows Firewall
+changes happen only if you explicitly request AirPlay setup or start the
+receiver after MirrorSpeaker is installed.
+
+Privacy details:
+https://github.com/codyabraham/MirrorSpeaker/blob/main/PRIVACY.md

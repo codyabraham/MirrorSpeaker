@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MirrorSpeaker</AssemblyName>
+    <RootNamespace>AirMirror.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\MirrorSpeaker.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <Version>1.4.0</Version>
+    <Product>MirrorSpeaker</Product>
+    <Title>MirrorSpeaker</Title>
+    <Company>MirrorSpeaker Project</Company>
+    <Description>Bluetooth audio and AirPlay screen mirroring from iPhone to Windows 11.</Description>
+    <Copyright>Copyright (c) 2026 MirrorSpeaker contributors</Copyright>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AirMirror.Core\AirMirror.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\MirrorSpeaker.ico" />
+    <Resource Include="Assets\MirrorSpeaker.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\scripts\Install-ReceiverEngine.ps1" Link="scripts\Install-ReceiverEngine.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\installer\README-PORTABLE.txt" Link="README-PORTABLE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="..\..\scripts\Configure-Firewall.ps1" LogicalName="MirrorSpeaker.Configure-Firewall.ps1" />
+  </ItemGroup>
+</Project>

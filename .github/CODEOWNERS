@@ -1,0 +1,10 @@
+# Sole current maintainer and code-signing role holder.
+* @codyabraham
+
+# Treat release and signing infrastructure as security-sensitive.
+/.github/ @codyabraham
+/installer/ @codyabraham
+/scripts/ @codyabraham
+/CODE_SIGNING_POLICY.md @codyabraham
+/PRIVACY.md @codyabraham
+/SECURITY.md @codyabraham

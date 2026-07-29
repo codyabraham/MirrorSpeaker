@@ -1,0 +1,230 @@
+name: Build unsigned Windows artifacts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  MIRRORSPEAKER_PUBLISHER: MirrorSpeaker Project
+  MIRRORSPEAKER_PUBLISHER_URL: ${{ github.server_url }}/${{ github.repository }}
+
+jobs:
+  build:
+    name: Test and package (unsigned)
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned .NET SDK
+        id: setup-dotnet
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          global-json-file: global.json
+
+      - name: Verify .NET SDK and read app version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedSdk = '10.0.302'
+          $actualSdk = dotnet --version
+          if ($actualSdk -ne $expectedSdk) {
+              throw "Expected .NET SDK $expectedSdk, but dotnet selected $actualSdk."
+          }
+
+          [xml] $project = Get-Content `
+              -LiteralPath 'src/AirMirror.App/AirMirror.App.csproj' `
+              -Raw
+          $versions = @(
+              $project.Project.PropertyGroup |
+                  ForEach-Object { $_.Version } |
+                  Where-Object {
+                      -not [string]::IsNullOrWhiteSpace([string] $_)
+                  }
+          )
+          if ($versions.Count -ne 1) {
+              throw 'The application project must define exactly one Version.'
+          }
+
+          $appVersion = ([string] $versions[0]).Trim()
+          if ($appVersion -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?$') {
+              throw "Application version '$appVersion' is not packageable."
+          }
+          "MIRRORSPEAKER_VERSION=$appVersion" |
+              Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install verified Inno Setup 7.0.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerName = 'innosetup-7.0.2-x64.exe'
+          $installerPath = Join-Path $env:RUNNER_TEMP $installerName
+          $installerUri = 'https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe'
+          $expectedSha256 = '5ad54ca3def786f8f4212552e54cc6d8d61329e2d24a1cfee0571d42c2684ff1'
+
+          Invoke-WebRequest -Uri $installerUri -OutFile $installerPath
+          $actualSha256 = (
+              Get-FileHash -LiteralPath $installerPath -Algorithm SHA256
+          ).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+              throw "SHA-256 verification failed for $installerName."
+          }
+
+          $process = Start-Process `
+              -FilePath $installerPath `
+              -ArgumentList @(
+                  '/VERYSILENT',
+                  '/SUPPRESSMSGBOXES',
+                  '/NORESTART',
+                  '/SP-',
+                  '/CURRENTUSER'
+              ) `
+              -Wait `
+              -PassThru
+          if ($process.ExitCode -ne 0) {
+              throw "Inno Setup installation failed with exit code $($process.ExitCode)."
+          }
+
+          $compilerCandidates = @(
+              (Join-Path $env:LOCALAPPDATA 'Programs/Inno Setup 7/ISCC.exe'),
+              (Join-Path $env:ProgramFiles 'Inno Setup 7/ISCC.exe'),
+              (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 7/ISCC.exe')
+          )
+          $compilerPath = $compilerCandidates |
+              Where-Object {
+                  Test-Path -LiteralPath $_ -PathType Leaf
+              } |
+              Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($compilerPath)) {
+              throw 'The verified Inno Setup installer did not install ISCC.exe.'
+          }
+          Split-Path -Parent $compilerPath |
+              Out-File -LiteralPath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build framework-dependent application
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/Build-Release.ps1 `
+              -Configuration Release `
+              -Version $env:MIRRORSPEAKER_VERSION `
+              -Publisher $env:MIRRORSPEAKER_PUBLISHER
+
+      - name: Run smoke tests and package unsigned artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/Build-Installer.ps1 `
+              -Configuration Release `
+              -Version $env:MIRRORSPEAKER_VERSION `
+              -Publisher $env:MIRRORSPEAKER_PUBLISHER `
+              -PublisherUrl $env:MIRRORSPEAKER_PUBLISHER_URL `
+              -SkipApplicationBuild `
+              -ExcludeReceiverEngine
+
+      - name: Verify unsigned artifacts and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDirectory = Join-Path $PWD 'artifacts/release'
+          $baseName = "MirrorSpeaker-$env:MIRRORSPEAKER_VERSION"
+          $setupPath = Join-Path `
+              $releaseDirectory `
+              "$baseName-win-x64-setup.exe"
+          $portablePath = Join-Path `
+              $releaseDirectory `
+              "$baseName-win-x64-portable.zip"
+          $checksumsPath = Join-Path `
+              $releaseDirectory `
+              "$baseName-SHA256SUMS.txt"
+
+          foreach ($requiredArtifact in @(
+              $setupPath,
+              $portablePath,
+              $checksumsPath
+          )) {
+              if (-not (Test-Path -LiteralPath $requiredArtifact -PathType Leaf)) {
+                  throw "Expected artifact was not created: $requiredArtifact"
+              }
+          }
+
+          foreach ($unsignedExecutable in @(
+              (Join-Path $PWD 'dist/win-x64/MirrorSpeaker.exe'),
+              $setupPath
+          )) {
+              $signature = Get-AuthenticodeSignature `
+                  -LiteralPath $unsignedExecutable
+              if ($signature.Status -ne [Management.Automation.SignatureStatus]::NotSigned) {
+                  throw "$unsignedExecutable must be unsigned in this CI workflow; signature status was $($signature.Status)."
+              }
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $portableArchive = [IO.Compression.ZipFile]::OpenRead($portablePath)
+          try {
+              $receiverEntry = $portableArchive.Entries |
+                  Where-Object {
+                      $_.FullName -match '(^|/)engine/' -or
+                      $_.Name -ieq 'uxplay.exe'
+                  } |
+                  Select-Object -First 1
+              if ($null -ne $receiverEntry) {
+                  throw "The public preview must not bundle receiver file '$($receiverEntry.FullName)'."
+              }
+          }
+          finally {
+              $portableArchive.Dispose()
+          }
+
+          $checksumLines = @(
+              Get-Content -LiteralPath $checksumsPath |
+                  Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          )
+          if ($checksumLines.Count -ne 2) {
+              throw 'The checksum file must contain exactly two entries.'
+          }
+          foreach ($line in $checksumLines) {
+              if ($line -notmatch '^(?<hash>[0-9a-f]{64}) \*(?<name>[^\\/]+)$') {
+                  throw "Invalid checksum line: $line"
+              }
+              $artifactPath = Join-Path $releaseDirectory $Matches.name
+              if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+                  throw "Checksum references a missing artifact: $($Matches.name)"
+              }
+              $actualHash = (
+                  Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256
+              ).Hash.ToLowerInvariant()
+              if ($actualHash -ne $Matches.hash) {
+                  throw "SHA-256 mismatch for $($Matches.name)."
+              }
+          }
+
+      - name: Upload unsigned build for review
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-win-x64-unsigned
+          path: |
+            artifacts/release/MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-win-x64-setup.exe
+            artifacts/release/MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-win-x64-portable.zip
+            artifacts/release/MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

@@ -1,0 +1,167 @@
+MirrorSpeaker third-party software notices
+===========================================
+
+MirrorSpeaker uses third-party software and, where stated below, redistributes
+third-party material. The Windows setup and uninstall programs contain Inno
+Setup-generated code. The user-initiated receiver setup obtains and builds
+additional software on the user's computer. These components are not authored
+by the MirrorSpeaker project and remain governed by their respective licenses.
+
+Microsoft .NET and WPF
+----------------------
+
+Projects:
+- .NET runtime: https://github.com/dotnet/runtime
+- WPF: https://github.com/dotnet/wpf
+
+MirrorSpeaker is published as a framework-dependent .NET 10 Windows
+application. MirrorSpeaker's setup executable, installed application, and
+portable ZIP do not bundle or redistribute Microsoft .NET or WPF runtime
+binaries.
+
+The normal Windows installer checks for a compatible Microsoft .NET 10 Desktop
+Runtime (x64). If it is missing, setup clearly prompts the user, downloads only
+the pinned official Microsoft 10.0.10 x64 runtime directly from Microsoft,
+verifies the download's SHA-256 checksum, and runs Microsoft's runtime
+installer. The runtime is a separately acquired Microsoft system component
+and is governed by Microsoft's terms. The portable ZIP does not perform this
+prerequisite installation; its user must install the Microsoft .NET 10 Desktop
+Runtime (x64) before launching MirrorSpeaker.
+
+Pinned Microsoft runtime-installer SHA-256:
+e82fc901c8f52d716293b2bc0830ce0dd254a06268c457a19e8fc503560a84d1
+
+The .NET and WPF source repositories are licensed under the MIT License.
+Microsoft publishes separate terms and notices for its Windows runtime
+distributions. Those terms apply when the runtime is obtained from Microsoft.
+
+License and notice information:
+- https://github.com/dotnet/core/blob/main/license-information.md
+- https://aka.ms/dotnet-library-license
+- https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+- https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT
+- https://github.com/dotnet/wpf/blob/main/LICENSE.TXT
+- https://github.com/dotnet/wpf/blob/main/THIRD-PARTY-NOTICES.TXT
+
+MirrorSpeaker uses Windows Bluetooth, audio, networking, and firewall APIs.
+Those APIs are Windows system components and are not redistributed by this
+project.
+
+Windows SDK .NET projections
+----------------------------
+
+The framework-dependent application includes the unmodified
+`Microsoft.Windows.SDK.NET.dll` and `WinRT.Runtime.dll` projection assemblies
+needed to call Windows Runtime APIs such as the Bluetooth audio receiver.
+They are supplied by Microsoft's `Microsoft.Windows.SDK.NET.Ref` targeting
+pack and are not MirrorSpeaker-authored code. The pack identifies Microsoft as
+the owner and links the Microsoft Windows SDK license terms:
+
+https://aka.ms/WinSDKLicenseURL
+
+MirrorSpeaker distributes these projection assemblies only as part of the
+Windows application and does not bundle Windows SDK development tools. A
+SignPath Foundation review must confirm that they qualify for its System
+Library exception before any release is represented as eligible for or
+covered by Foundation signing.
+
+Inno Setup
+----------
+
+Project: Inno Setup, an installation builder for Windows applications
+Upstream: https://github.com/jrsoftware/issrc
+License: Inno Setup License
+License text: https://github.com/jrsoftware/issrc/blob/main/license.txt
+
+The public setup executable and its uninstaller are generated using Inno
+Setup. The Inno Setup compiler and development environment are build tools and
+are not included in MirrorSpeaker downloads. Inno Setup-generated setup and
+uninstall code remains subject to the Inno Setup License.
+
+Inno Setup is copyright Jordan Russell. Portions are copyright Martijn Laan.
+
+UxPlay
+------
+
+Project: UxPlay, an AirPlay mirroring and audio receiver
+Upstream: https://github.com/FDH2/UxPlay
+Pinned source revision: 3ca7526387e894d6848b84c209de361c3bedd1ec
+License: GNU General Public License version 3.0
+License text: https://github.com/FDH2/UxPlay/blob/3ca7526387e894d6848b84c209de361c3bedd1ec/LICENSE
+
+The user-initiated receiver setup builds the experimental UxPlay 1.74 source
+with its internal mDNS implementation. UxPlay also contains separately
+licensed components; their notices and license files are included in the
+installed UxPlay documentation and in the pinned upstream source identified
+above.
+
+For Windows reliability and app integration, the receiver setup applies
+source patches that:
+
+- select the intended IPv4 adapter for internal mDNS discovery;
+- support RAOP-only advertisement for the optional AirPlay speaker mode;
+- support a named Windows event for graceful receiver shutdown; and
+- improve receiver reset/watch cleanup.
+
+The complete patch logic is contained in scripts/Install-ReceiverEngine.ps1.
+Source fragments, replacement bodies, and other UxPlay-derived patch material
+embedded in that script were modified by the MirrorSpeaker Project on
+2026-07-28 (MirrorSpeaker patch level 2). They are modifications of UxPlay
+and are offered under the GNU General Public License version 3.0, not the
+root MirrorSpeaker MIT License. MirrorSpeaker-authored installation
+orchestration that is not derived from UxPlay remains under the root project
+license.
+
+Any redistributed prebuilt receiver must be accompanied by the exact patched
+corresponding source and the scripts and instructions needed to rebuild it.
+The current receiver package is not approved for public redistribution. The
+first public MirrorSpeaker release must omit the receiver binary and retain
+the explicit, user-initiated local source build. That restriction remains
+until the receiver has a reproducible public CI build, complete corresponding
+source for every conveyed component, and an explicit license and legal review.
+
+FairPlay / PlayFair legal-status notice
+--------------------------------------
+
+UxPlay states that it uses a third-party GPL library for handling FairPlay and
+that the legal status of that library is unclear. UxPlay's disclaimer also
+states that its resources are intended for educational purposes and that
+users are responsible for following local law. See the disclaimer in the
+pinned upstream source:
+
+https://github.com/FDH2/UxPlay/blob/3ca7526387e894d6848b84c209de361c3bedd1ec/README.md#disclaimer
+
+MirrorSpeaker repeats this upstream warning so that it is not hidden from
+users or reviewers. The MirrorSpeaker project has not made a legal
+determination about PlayFair, does not represent that redistribution has been
+legally approved, and does not provide legal advice. This is an additional
+reason the current prebuilt receiver package is marked DO NOT REDISTRIBUTE.
+Users and distributors must make their own lawful-use and compliance
+determinations.
+
+MSYS2 and multimedia dependencies
+----------------------------------
+
+The user-initiated receiver setup obtains the portable MSYS2 environment and
+packages from the official MSYS2 repositories at https://www.msys2.org/ and
+https://repo.msys2.org/. Installed packages include GCC, CMake, Ninja,
+OpenSSL, libplist, GStreamer, GStreamer plug-ins, and FFmpeg/libav support.
+These packages use multiple open-source licenses. The authoritative license
+files installed by MSYS2 can be found below the receiver engine's
+usr/share/licenses and ucrt64/share/licenses directories.
+
+The current general-purpose MSYS2 FFmpeg build enables GPL components,
+including x264/x265-related functionality. Installed license texts alone are
+not sufficient for public binary redistribution. A prebuilt receiver release
+must include or provide the exact corresponding source and build materials for
+every conveyed GPL/LGPL component. MirrorSpeaker's receiver-package build
+script blocks a public-release designation until a maintainer explicitly
+supplies and confirms a corresponding-source bundle; that automated check is
+not a substitute for a legal or license-compliance review. Until the
+reproducible build, complete corresponding source, and explicit review are
+all complete, the prebuilt receiver remains DO NOT REDISTRIBUTE regardless of
+the script's metadata.
+
+Apple, AirPlay, iPhone, and Windows are trademarks of their respective
+owners. This project is independent and is not endorsed by Apple or
+Microsoft.
