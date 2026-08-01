@@ -29,17 +29,18 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Install pinned .NET SDK
         id: setup-dotnet
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Verify .NET SDK and read app version
+        id: release-metadata
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -69,6 +70,8 @@ jobs:
           }
           "MIRRORSPEAKER_VERSION=$appVersion" |
               Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "version=$appVersion" |
+              Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Install verified Inno Setup 7.0.2
         shell: pwsh
@@ -115,6 +118,8 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($compilerPath)) {
               throw 'The verified Inno Setup installer did not install ISCC.exe.'
           }
+          "MIRRORSPEAKER_INNO_COMPILER=$compilerPath" |
+              Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           Split-Path -Parent $compilerPath |
               Out-File -LiteralPath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -131,13 +136,20 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          ./scripts/Build-Installer.ps1 `
-              -Configuration Release `
-              -Version $env:MIRRORSPEAKER_VERSION `
-              -Publisher $env:MIRRORSPEAKER_PUBLISHER `
-              -PublisherUrl $env:MIRRORSPEAKER_PUBLISHER_URL `
-              -SkipApplicationBuild `
-              -ExcludeReceiverEngine
+          try {
+              ./scripts/Build-Installer.ps1 `
+                  -Configuration Release `
+                  -Version $env:MIRRORSPEAKER_VERSION `
+                  -Publisher $env:MIRRORSPEAKER_PUBLISHER `
+                  -PublisherUrl $env:MIRRORSPEAKER_PUBLISHER_URL `
+                  -InnoCompilerPath $env:MIRRORSPEAKER_INNO_COMPILER `
+                  -SkipApplicationBuild `
+                  -ExcludeReceiverEngine
+          }
+          catch {
+              $_ | Format-List * -Force | Out-String | Write-Host
+              throw
+          }
 
       - name: Verify unsigned artifacts and checksums
         shell: pwsh
@@ -218,13 +230,13 @@ jobs:
 
       - name: Upload unsigned build for review
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-win-x64-unsigned
+          name: MirrorSpeaker-${{ steps.release-metadata.outputs.version }}-win-x64-unsigned
           path: |
-            artifacts/release/MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-win-x64-setup.exe
-            artifacts/release/MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-win-x64-portable.zip
-            artifacts/release/MirrorSpeaker-${{ env.MIRRORSPEAKER_VERSION }}-SHA256SUMS.txt
+            artifacts/release/MirrorSpeaker-${{ steps.release-metadata.outputs.version }}-win-x64-setup.exe
+            artifacts/release/MirrorSpeaker-${{ steps.release-metadata.outputs.version }}-win-x64-portable.zip
+            artifacts/release/MirrorSpeaker-${{ steps.release-metadata.outputs.version }}-SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

@@ -17,6 +17,9 @@ param(
     [string] $PublisherUrl = '',
 
     [Parameter()]
+    [string] $InnoCompilerPath = '',
+
+    [Parameter()]
     [switch] $SkipApplicationBuild,
 
     [Parameter()]
@@ -84,11 +87,15 @@ function Add-InnoCandidate {
         [Collections.Generic.List[string]] $Candidates,
 
         [Parameter()]
-        [string] $Path
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        [string[]] $Path
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($Path)) {
-        $Candidates.Add($Path)
+    foreach ($candidatePath in @($Path)) {
+        if (-not [string]::IsNullOrWhiteSpace($candidatePath)) {
+            [void] $Candidates.Add($candidatePath)
+        }
     }
 }
 
@@ -318,7 +325,18 @@ if ($ExcludeReceiverEngine -and
 '@
 }
 
-$innoCompiler = Find-InnoCompiler
+$innoCompiler = if ([string]::IsNullOrWhiteSpace($InnoCompilerPath)) {
+    Find-InnoCompiler
+}
+else {
+    $expandedCompilerPath = [Environment]::ExpandEnvironmentVariables(
+        $InnoCompilerPath.Trim())
+    $fullCompilerPath = [IO.Path]::GetFullPath($expandedCompilerPath)
+    if (-not (Test-Path -LiteralPath $fullCompilerPath -PathType Leaf)) {
+        throw "The specified Inno Setup compiler was not found: $fullCompilerPath"
+    }
+    $fullCompilerPath
+}
 Assert-InnoCompilerVersion -CompilerPath $innoCompiler
 $dotnet = Get-Command -Name 'dotnet.exe' -CommandType Application -ErrorAction Stop
 
