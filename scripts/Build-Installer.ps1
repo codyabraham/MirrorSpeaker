@@ -203,6 +203,44 @@ $fullCompilerPath
 "@
 }
 
+function Assert-InnoRuntimeConstants {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ScriptPath
+    )
+
+    $allowedConstants = New-Object 'Collections.Generic.HashSet[string]' (
+        [StringComparer]::OrdinalIgnoreCase)
+    foreach ($constantName in @(
+        'app',
+        'autodesktop',
+        'commonpf64',
+        'group',
+        'localappdata',
+        'sys',
+        'tmp'
+    )) {
+        [void] $allowedConstants.Add($constantName)
+    }
+
+    $scriptText = Get-Content -LiteralPath $ScriptPath -Raw
+    $constantPattern =
+        '(?<!\{)\{(?![#%\\])(?<name>[A-Za-z][A-Za-z0-9]*)(?=[:}])'
+    foreach ($match in [regex]::Matches($scriptText, $constantPattern)) {
+        $constantName = $match.Groups['name'].Value
+        if (-not $allowedConstants.Contains($constantName)) {
+            $lineNumber = 1 + [regex]::Matches(
+                $scriptText.Substring(0, $match.Index),
+                "`n").Count
+            throw @"
+Unsupported Inno Setup runtime constant '{$constantName}' in
+$ScriptPath at line $lineNumber. Only documented and reviewed runtime
+constants may be used in the public installer.
+"@
+        }
+    }
+}
+
 function Copy-DirectoryContents {
     param(
         [Parameter(Mandatory = $true)]
@@ -316,6 +354,8 @@ foreach ($requiredFile in @($buildReleaseScript, $testProjectPath, $installerScr
         throw "A required build file was not found: $requiredFile"
     }
 }
+
+Assert-InnoRuntimeConstants -ScriptPath $installerScript
 
 if ($ExcludeReceiverEngine -and
     ($RequireReceiverEngine -or $AllowInternalReceiverEngine)) {

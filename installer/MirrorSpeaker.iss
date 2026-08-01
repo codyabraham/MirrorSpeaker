@@ -199,15 +199,19 @@ begin
   end;
 end;
 
+function GetMachineX64DotNetRoot: String;
+begin
+  Result := ExpandConstant('{commonpf64}\dotnet');
+  if IsArm64 then
+    Result := AddBackslash(Result) + 'x64';
+end;
+
 function HasRequiredDotNetDesktopRuntime: Boolean;
 begin
   Result :=
-    HasDotNet10DesktopRuntimeAt(
-      ExpandConstant('{autopf64}\dotnet')) or
     HasDotNet10DesktopRuntimeAt(GetEnv('DOTNET_ROOT_X64')) or
     HasDotNet10DesktopRuntimeAt(GetEnv('DOTNET_ROOT')) or
-    HasDotNet10DesktopRuntimeAt(
-      ExpandConstant('{userprofile}\.dotnet'));
+    HasDotNet10DesktopRuntimeAt(GetMachineX64DotNetRoot);
 end;
 
 procedure InitializeWizard;
