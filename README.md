@@ -55,7 +55,7 @@ installer, portable ZIP, and SHA-256 checksum file with:
 
 ```powershell
 .\scripts\Build-Installer.ps1 `
-  -Version 1.4.3 `
+  -Version 1.4.4 `
   -Publisher "MirrorSpeaker Project" `
   -PublisherUrl "https://github.com/codyabraham/MirrorSpeaker"
 ```
@@ -117,7 +117,7 @@ If the iPhone connects but video or audio does not appear:
 - Disable **Low-latency mode** when watching video if audio/video synchronization matters more than responsiveness.
 - Protected content from the Apple TV app and other DRM-protected services cannot be decrypted by UxPlay. Ordinary screen content, photos, presentations, games, and most apps are the intended use.
 
-For TikTok, use **Bluetooth speaker — best for TikTok**. TikTok may treat AirPlay screen mirroring as external playback and stop its local picture. Bluetooth avoids that AirPlay classification. Windows does not expose codec or buffer controls for this receiver API, so a small wireless delay remains. Using another wireless headset or speaker creates two radio hops and can be less reliable than the PC's built-in speakers or wired headphones. If Windows actually closes the Bluetooth audio profile, MirrorSpeaker makes three bounded reconnection attempts before asking for attention.
+For TikTok, use **Bluetooth speaker — best for TikTok**. TikTok may treat AirPlay screen mirroring as external playback and stop its local picture. Bluetooth avoids that AirPlay classification. Windows does not expose codec or buffer controls for this receiver API, so a small wireless delay remains. Using another wireless headset or speaker creates two radio hops and can be less reliable than the PC's built-in speakers or wired headphones. MirrorSpeaker keeps an enabled receiver alive after a transient Windows opening failure, recognizes a later phone-initiated connection, and makes bounded background attempts to open or recover the audio link.
 
 ## Verification
 

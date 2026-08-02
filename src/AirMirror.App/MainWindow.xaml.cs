@@ -500,7 +500,7 @@ public partial class MainWindow : Window
                         : "Turning on Windows Bluetooth speaker mode and connecting to the iPhone…"
                     : "Advertising this PC on your Wi-Fi network…";
                 PrimaryButton.Content = bluetooth ? "Stop Bluetooth speaker" : "Stop receiver";
-                PrimaryButton.IsEnabled = true;
+                PrimaryButton.IsEnabled = !bluetooth;
                 break;
 
             case ReceiverState.Reconnecting:
@@ -514,11 +514,10 @@ public partial class MainWindow : Window
             case ReceiverState.Ready:
                 if (bluetooth)
                 {
-                    SetStatusBadge("Needs attention", BadgeKind.Error);
-                    ReceiverSummaryText.Text = "Windows has not confirmed that its Bluetooth audio receiver profile opened, so this PC will not appear as an iPhone audio destination yet.";
-                    PrimaryButton.Content = IsAnyReceiverRunning ? "Stop Bluetooth speaker" : "Try again";
+                    SetStatusBadge("Waiting for audio", BadgeKind.Warning);
+                    ReceiverSummaryText.Text = "Windows enabled the Bluetooth receiver but has not opened the iPhone audio link yet. Keep the iPhone awake and play audio while MirrorSpeaker retries. If it stays here, toggle Bluetooth off and on, then stop and start this mode again.";
+                    PrimaryButton.Content = "Stop Bluetooth speaker";
                     PrimaryButton.IsEnabled = true;
-                    DiagnosticsExpander.IsExpanded = true;
                     break;
                 }
 
@@ -534,6 +533,7 @@ public partial class MainWindow : Window
                     ? BuildBluetoothConnectedSummary()
                     : "Your iPhone is connected. The mirrored screen is open in a separate window.";
                 PrimaryButton.Content = bluetooth ? "Stop Bluetooth speaker" : "Stop receiver";
+                PrimaryButton.IsEnabled = true;
                 PairingCard.Visibility = Visibility.Collapsed;
                 break;
 
@@ -541,13 +541,14 @@ public partial class MainWindow : Window
                 SetStatusBadge("Needs attention", BadgeKind.Error);
                 ReceiverSummaryText.Text = bluetooth
                     ? phoneIsConnected
-                        ? "Windows sees the iPhone's general Bluetooth connection, but could not open its separate Bluetooth audio receiver profile. This PC therefore will not appear as an iPhone audio destination yet; no re-pairing is needed."
-                        : "Windows found the iPhone, but could not open its Bluetooth audio receiver profile. This PC therefore will not appear as an iPhone audio destination yet."
+                        ? "Windows sees the iPhone's general Bluetooth connection, but its Bluetooth/audio device stack could not open the audio link. Open Diagnostics for the Windows error code; no re-pairing is needed."
+                        : "Windows found the iPhone, but its Bluetooth audio link could not be enabled. Open Diagnostics for details."
                     : "The receiver reported a problem. Open Diagnostics below for details.";
                 PrimaryButton.Content = IsAnyReceiverRunning
                     ? bluetooth ? "Stop Bluetooth speaker" : "Stop receiver"
                     : "Try again";
                 PrimaryButton.IsEnabled = true;
+                SetOptionsEnabled(!IsAnyReceiverRunning);
                 DiagnosticsExpander.IsExpanded = true;
                 break;
         }

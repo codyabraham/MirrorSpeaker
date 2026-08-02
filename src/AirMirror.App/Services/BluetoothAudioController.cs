@@ -23,6 +23,12 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
         TimeSpan.FromMilliseconds(750),
         TimeSpan.FromSeconds(2)
     ];
+    private static readonly TimeSpan[] InitialOpenRetryDelays =
+    [
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(6)
+    ];
 
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
     private readonly object _connectionGate = new();
@@ -33,6 +39,7 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
     private long _sessionGeneration;
     private bool _desiredRunning;
     private bool _hasOpened;
+    private bool _everOpened;
     private bool _recoveryRunning;
     private ReceiverState _state = ReceiverState.Stopped;
 
@@ -118,6 +125,7 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
         await _lifecycleLock.WaitAsync().ConfigureAwait(false);
         long generation = 0;
         AudioPlaybackConnection? connection = null;
+        CancellationToken sessionCancellationToken = default;
         try
         {
             lock (_connectionGate)
@@ -130,8 +138,10 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
                 _desiredRunning = true;
                 _activeDevice = device;
                 _sessionCancellation = new CancellationTokenSource();
+                sessionCancellationToken = _sessionCancellation.Token;
                 generation = ++_sessionGeneration;
                 _hasOpened = false;
+                _everOpened = false;
                 _recoveryRunning = false;
             }
 
@@ -156,21 +166,39 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
             await connection.StartAsync();
             var openResult = await connection.OpenAsync();
 
-            if (openResult.Status != AudioPlaybackConnectionOpenResultStatus.Success)
+            if (openResult.Status == AudioPlaybackConnectionOpenResultStatus.Success
+                || IsConnectionStateOpened(connection))
             {
-                LogOpenFailure(openResult, "Initial Bluetooth connection");
-                throw new InvalidOperationException(
-                    $"Windows returned {openResult.Status} while opening the Bluetooth audio receiver profile.");
+                if (!TransitionToOpened(connection, generation, out var newlyOpened))
+                {
+                    throw new InvalidOperationException(
+                        "The Bluetooth speaker session changed before Windows finished confirming the connection.");
+                }
+
+                if (newlyOpened)
+                {
+                    OutputReceived?.Invoke(this, "Bluetooth audio connection opened.");
+                }
+                ScheduleOpenStateVerification(connection, generation);
+                return;
             }
 
-            if (!TransitionToOpened(connection, generation))
+            LogOpenFailure(openResult, "Initial Bluetooth connection");
+            if (!IsRetryableOpenFailure(openResult))
             {
-                throw new InvalidOperationException(
-                    "The Bluetooth speaker session changed before Windows finished confirming the connection.");
+                throw new BluetoothAudioOpenException(
+                    BuildOpenFailureMessage(device, openResult));
             }
 
-            OutputReceived?.Invoke(this, "Bluetooth audio connection opened.");
-            ScheduleOpenStateVerification(connection, generation);
+            PublishState(generation, ReceiverState.Ready);
+            OutputReceived?.Invoke(
+                this,
+                "Windows enabled the Bluetooth receiver but has not opened the iPhone audio link yet. Keeping it enabled and retrying in the background.");
+            BeginInitialOpenRecovery(
+                connection,
+                device,
+                generation,
+                sessionCancellationToken);
         }
         catch (Exception exception)
         {
@@ -179,7 +207,14 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
                 EndSessionWithError(generation, connection);
             }
 
-            throw new InvalidOperationException(BuildOpenFailureMessage(device), exception);
+            if (exception is BluetoothAudioOpenException)
+            {
+                throw;
+            }
+
+            throw new BluetoothAudioOpenException(
+                BuildOpenFailureMessage(device),
+                exception);
         }
         finally
         {
@@ -207,6 +242,7 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
                 _recoveryTask = null;
                 _desiredRunning = false;
                 _hasOpened = false;
+                _everOpened = false;
                 _recoveryRunning = false;
                 _sessionGeneration++;
                 stateChanged = _state != ReceiverState.Stopped;
@@ -252,12 +288,176 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
     private void Connection_StateChanged(AudioPlaybackConnection sender, object args)
     {
         var state = sender.State;
+        if (state == AudioPlaybackConnectionState.Opened)
+        {
+            long generation;
+            lock (_connectionGate)
+            {
+                if (!ReferenceEquals(_connection, sender) || !_desiredRunning)
+                {
+                    return;
+                }
+
+                generation = _sessionGeneration;
+            }
+
+            if (TransitionToOpened(sender, generation, out var newlyOpened))
+            {
+                if (newlyOpened)
+                {
+                    OutputReceived?.Invoke(
+                        this,
+                        "Windows reported that the iPhone Bluetooth audio link opened.");
+                }
+                ScheduleOpenStateVerification(sender, generation);
+            }
+            return;
+        }
+
         if (state != AudioPlaybackConnectionState.Closed)
         {
             return;
         }
 
         BeginRecoveryIfNeeded(sender);
+    }
+
+    private void BeginInitialOpenRecovery(
+        AudioPlaybackConnection connection,
+        BluetoothAudioDevice device,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        lock (_connectionGate)
+        {
+            if (!ReferenceEquals(_connection, connection)
+                || !_desiredRunning
+                || _everOpened
+                || _recoveryRunning
+                || generation != _sessionGeneration)
+            {
+                return;
+            }
+
+            _recoveryRunning = true;
+        }
+
+        var recoveryTask = RecoverInitialOpenAsync(
+            connection,
+            device,
+            generation,
+            cancellationToken);
+        lock (_connectionGate)
+        {
+            if (_desiredRunning && generation == _sessionGeneration)
+            {
+                _recoveryTask = recoveryTask;
+            }
+        }
+    }
+
+    private async Task RecoverInitialOpenAsync(
+        AudioPlaybackConnection connection,
+        BluetoothAudioDevice device,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            for (var attempt = 0; attempt < InitialOpenRetryDelays.Length; attempt++)
+            {
+                await Task.Delay(
+                    InitialOpenRetryDelays[attempt],
+                    cancellationToken).ConfigureAwait(false);
+                await _lifecycleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (!IsCurrentConnection(connection, generation)
+                        || HasCurrentConnectionEverOpened(connection, generation))
+                    {
+                        return;
+                    }
+
+                    OutputReceived?.Invoke(
+                        this,
+                        $"Retrying the enabled Bluetooth audio link (attempt {attempt + 1} of {InitialOpenRetryDelays.Length}).");
+                    var openResult = await connection.OpenAsync();
+                    if (openResult.Status == AudioPlaybackConnectionOpenResultStatus.Success
+                        || IsConnectionStateOpened(connection))
+                    {
+                        if (TransitionToOpened(connection, generation, out var newlyOpened))
+                        {
+                            if (newlyOpened)
+                            {
+                                OutputReceived?.Invoke(
+                                    this,
+                                    $"Bluetooth audio opened on background attempt {attempt + 1}.");
+                            }
+                            ScheduleOpenStateVerification(connection, generation);
+                        }
+                        return;
+                    }
+
+                    LogOpenFailure(
+                        openResult,
+                        $"Bluetooth background attempt {attempt + 1}");
+                    if (!IsRetryableOpenFailure(openResult))
+                    {
+                        OutputReceived?.Invoke(
+                            this,
+                            BuildOpenFailureMessage(device, openResult));
+                        EndSessionWithError(generation, connection);
+                        return;
+                    }
+                }
+                finally
+                {
+                    _lifecycleLock.Release();
+                }
+            }
+
+            lock (_connectionGate)
+            {
+                if (_desiredRunning
+                    && generation == _sessionGeneration
+                    && ReferenceEquals(_connection, connection)
+                    && !_everOpened)
+                {
+                    _recoveryRunning = false;
+                }
+            }
+
+            if (IsCurrentConnection(connection, generation)
+                && !HasCurrentConnectionEverOpened(connection, generation))
+            {
+                OutputReceived?.Invoke(
+                    this,
+                    "Windows still has the Bluetooth receiver enabled, but the audio link remains closed. Keep the iPhone awake and playing audio. If it stays closed, toggle Bluetooth off and on, then stop and restart Bluetooth mode.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The user stopped Bluetooth mode while an initial retry was waiting.
+        }
+        catch (Exception exception)
+        {
+            OutputReceived?.Invoke(
+                this,
+                $"Bluetooth background opening stopped unexpectedly: {exception}");
+            await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (IsCurrentConnection(connection, generation)
+                    && !HasCurrentConnectionEverOpened(connection, generation))
+                {
+                    EndSessionWithError(generation, connection);
+                }
+            }
+            finally
+            {
+                _lifecycleLock.Release();
+            }
+        }
     }
 
     private void BeginRecoveryIfNeeded(AudioPlaybackConnection sender)
@@ -373,8 +573,12 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
                     }
 
                     var openResult = await connection.OpenAsync();
-                    if (openResult.Status == AudioPlaybackConnectionOpenResultStatus.Success
-                        && TransitionToOpened(connection, generation))
+                    if ((openResult.Status == AudioPlaybackConnectionOpenResultStatus.Success
+                         || IsConnectionStateOpened(connection))
+                        && TransitionToOpened(
+                            connection,
+                            generation,
+                            out _))
                     {
                         OutputReceived?.Invoke(
                             this,
@@ -444,7 +648,7 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
         long generation)
     {
         var newConnection = AudioPlaybackConnection.TryCreateFromId(device.Id)
-            ?? throw new InvalidOperationException(BuildOpenFailureMessage(device));
+            ?? throw new BluetoothAudioOpenException(BuildOpenFailureMessage(device));
         newConnection.StateChanged += Connection_StateChanged;
 
         AudioPlaybackConnection? previousConnection;
@@ -470,9 +674,13 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
         return newConnection;
     }
 
-    private bool TransitionToOpened(AudioPlaybackConnection connection, long generation)
+    private bool TransitionToOpened(
+        AudioPlaybackConnection connection,
+        long generation,
+        out bool newlyOpened)
     {
         bool stateChanged;
+        newlyOpened = false;
         lock (_connectionGate)
         {
             if (!_desiredRunning
@@ -482,7 +690,9 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
                 return false;
             }
 
+            newlyOpened = !_hasOpened;
             _hasOpened = true;
+            _everOpened = true;
             _recoveryRunning = false;
             stateChanged = _state != ReceiverState.Mirroring;
             _state = ReceiverState.Mirroring;
@@ -541,6 +751,7 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
             _recoveryTask = null;
             _desiredRunning = false;
             _hasOpened = false;
+            _everOpened = false;
             _recoveryRunning = false;
             stateChanged = _state != ReceiverState.Error;
             _state = ReceiverState.Error;
@@ -571,6 +782,50 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
                    && ReferenceEquals(_connection, connection);
         }
     }
+
+    private bool IsCurrentConnectionOpened(
+        AudioPlaybackConnection connection,
+        long generation)
+    {
+        lock (_connectionGate)
+        {
+            return _desiredRunning
+                   && generation == _sessionGeneration
+                   && ReferenceEquals(_connection, connection)
+                   && _hasOpened;
+        }
+    }
+
+    private bool HasCurrentConnectionEverOpened(
+        AudioPlaybackConnection connection,
+        long generation)
+    {
+        lock (_connectionGate)
+        {
+            return _desiredRunning
+                   && generation == _sessionGeneration
+                   && ReferenceEquals(_connection, connection)
+                   && _everOpened;
+        }
+    }
+
+    private static bool IsConnectionStateOpened(
+        AudioPlaybackConnection connection)
+    {
+        try
+        {
+            return connection.State == AudioPlaybackConnectionState.Opened;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsRetryableOpenFailure(
+        AudioPlaybackConnectionOpenResult openResult) =>
+        openResult.Status is AudioPlaybackConnectionOpenResultStatus.RequestTimedOut
+            or AudioPlaybackConnectionOpenResultStatus.UnknownFailure;
 
     private void LogOpenFailure(
         AudioPlaybackConnectionOpenResult openResult,
@@ -614,10 +869,37 @@ internal sealed class BluetoothAudioController : IAsyncDisposable
         }
     }
 
-    private static string BuildOpenFailureMessage(BluetoothAudioDevice device) =>
-        device.IsWindowsConnected
-            ? "Windows shows the iPhone's general Bluetooth connection, but could not open its separate Bluetooth audio receiver profile. This PC therefore will not appear as an iPhone audio destination yet. The iPhone remains paired; do not pair it again."
-            : "Windows found the paired iPhone but could not open its Bluetooth audio receiver profile, so this PC will not appear as an iPhone audio destination yet. Make sure Bluetooth is on, then try again.";
+    private static string BuildOpenFailureMessage(
+        BluetoothAudioDevice device,
+        AudioPlaybackConnectionOpenResult? openResult = null)
+    {
+        if (openResult?.ExtendedError.HResult == unchecked((int)0x8007001F))
+        {
+            return "Windows found the iPhone audio endpoint, but the Bluetooth/audio device stack returned 0x8007001F (device not functioning). MirrorSpeaker kept the receiver enabled and retried. Toggle Bluetooth off and on in Windows and on the iPhone, then stop and restart Bluetooth mode. If it continues, update the PC's Bluetooth driver and restart Windows. The iPhone remains paired; do not remove it first.";
+        }
+
+        if (openResult is not null)
+        {
+            return $"Windows found the iPhone audio endpoint but returned {openResult.Status} (0x{openResult.ExtendedError.HResult:X8}) while opening it. Keep the iPhone awake, confirm Bluetooth is on, and try again. The iPhone remains paired; do not remove it first.";
+        }
+
+        return device.IsWindowsConnected
+            ? "Windows shows the iPhone's general Bluetooth connection, but its audio link could not be enabled. Toggle Bluetooth off and on in Windows and on the iPhone, then try again. The iPhone remains paired; do not remove it first."
+            : "Windows found the paired iPhone but could not enable its Bluetooth audio link. Make sure Bluetooth is on and the iPhone is awake, then try again.";
+    }
+
+    private sealed class BluetoothAudioOpenException : InvalidOperationException
+    {
+        public BluetoothAudioOpenException(string message)
+            : base(message)
+        {
+        }
+
+        public BluetoothAudioOpenException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
+    }
 
     private static Guid? GetContainerId(DeviceInformation device, string propertyName)
     {
