@@ -56,7 +56,7 @@ installer, portable ZIP, and SHA-256 checksum file with:
 
 ```powershell
 .\scripts\Build-Installer.ps1 `
-  -Version 1.4.0 `
+  -Version 1.4.2 `
   -Publisher "MirrorSpeaker Project" `
   -PublisherUrl "https://github.com/codyabraham/MirrorSpeaker"
 ```

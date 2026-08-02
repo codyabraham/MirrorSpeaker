@@ -73,8 +73,8 @@ function Get-ProjectVersion {
             ForEach-Object { $_.Version } |
             Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) }
     )
-    if ($versions.Count -eq 0) {
-        throw "The application project does not define a Version property."
+    if ($versions.Count -ne 1) {
+        throw "The application project must define exactly one Version."
     }
 
     return ([string] $versions[0]).Trim()
@@ -324,6 +324,38 @@ function New-InnoDefineArgument {
     return "/D$Name=$Value"
 }
 
+function Assert-ReleaseFileMetadata {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path,
+
+        [Parameter(Mandatory = $true)]
+        [string] $ExpectedVersion,
+
+        [Parameter(Mandatory = $true)]
+        [string] $ExpectedPublisher
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Release file was not found: $Path"
+    }
+
+    $versionInfo = (Get-Item -LiteralPath $Path).VersionInfo
+    $productVersion = ([string] $versionInfo.ProductVersion).Trim()
+    $productName = ([string] $versionInfo.ProductName).Trim()
+    $companyName = ([string] $versionInfo.CompanyName).Trim()
+
+    if ($productVersion -ne $ExpectedVersion) {
+        throw "Release file '$Path' has product version '$productVersion'; expected exactly '$ExpectedVersion'."
+    }
+    if ($productName -ne 'MirrorSpeaker') {
+        throw "Release file '$Path' has product name '$productName'; expected 'MirrorSpeaker'."
+    }
+    if ($companyName -ne $ExpectedPublisher) {
+        throw "Release file '$Path' has publisher '$companyName'; expected '$ExpectedPublisher'."
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = Get-ProjectVersion
 }
@@ -390,18 +422,10 @@ if (-not $SkipApplicationBuild) {
     }
 }
 
-if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
-    throw "The published application was not found at $applicationPath."
-}
-
-$versionInfo = (Get-Item -LiteralPath $applicationPath).VersionInfo
-$binaryVersion = ([string] $versionInfo.ProductVersion).Split('+')[0].Trim()
-if ($binaryVersion -ne $Version) {
-    throw "Published application version '$binaryVersion' does not match requested version '$Version'."
-}
-if ([string] $versionInfo.CompanyName -ne $Publisher) {
-    throw "Published application publisher '$($versionInfo.CompanyName)' does not match requested publisher '$Publisher'."
-}
+Assert-ReleaseFileMetadata `
+    -Path $applicationPath `
+    -ExpectedVersion $Version `
+    -ExpectedPublisher $Publisher
 
 $testArguments = @(
     'run',
@@ -614,6 +638,11 @@ try {
     if (-not (Test-Path -LiteralPath $stagedSetupPath -PathType Leaf)) {
         throw "Inno Setup completed without creating $stagedSetupPath."
     }
+
+    Assert-ReleaseFileMetadata `
+        -Path $stagedSetupPath `
+        -ExpectedVersion $Version `
+        -ExpectedPublisher $Publisher
 
     $checksumLines = @(
         Get-Item -LiteralPath $stagedSetupPath, $stagedPortablePath |

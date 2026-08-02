@@ -7,8 +7,7 @@ param(
     [string] $Configuration = 'Release',
 
     [Parameter()]
-    [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?$')]
-    [string] $Version = '1.4.1',
+    [string] $Version = '',
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
@@ -38,6 +37,25 @@ if (-not (Test-Path -LiteralPath $projectPath -PathType Leaf)) {
     throw "The application project was not found at $projectPath."
 }
 
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    [xml] $project = Get-Content -LiteralPath $projectPath -Raw
+    $versions = @(
+        $project.Project.PropertyGroup |
+            ForEach-Object { $_.Version } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) }
+    )
+    if ($versions.Count -ne 1) {
+        throw 'The application project must define exactly one Version.'
+    }
+    $Version = ([string] $versions[0]).Trim()
+}
+else {
+    $Version = $Version.Trim()
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?$') {
+    throw "Version must contain three or four numeric parts, for example 1.4.2."
+}
+
 $dotnet = Get-Command -Name 'dotnet.exe' -CommandType Application -ErrorAction Stop
 New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 Assert-SafeDistChild -Path $stagingPath
@@ -64,6 +82,23 @@ try {
 
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish failed with exit code $LASTEXITCODE."
+    }
+
+    $stagedApplicationPath = Join-Path $stagingPath 'MirrorSpeaker.exe'
+    if (-not (Test-Path -LiteralPath $stagedApplicationPath -PathType Leaf)) {
+        throw "dotnet publish did not create $stagedApplicationPath."
+    }
+
+    $versionInfo = (Get-Item -LiteralPath $stagedApplicationPath).VersionInfo
+    $productVersion = ([string] $versionInfo.ProductVersion).Trim()
+    if ($productVersion -ne $Version) {
+        throw "Published application product version '$productVersion' does not exactly match requested version '$Version'."
+    }
+    if (([string] $versionInfo.ProductName).Trim() -ne 'MirrorSpeaker') {
+        throw "Published application product name '$($versionInfo.ProductName)' is not MirrorSpeaker."
+    }
+    if (([string] $versionInfo.CompanyName).Trim() -ne $Publisher) {
+        throw "Published application publisher '$($versionInfo.CompanyName)' does not match requested publisher '$Publisher'."
     }
 
     $forbiddenRuntimeFiles = @(

@@ -12,7 +12,7 @@
     <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <Version>1.4.1</Version>
+    <Version>1.4.2</Version>
     <Product>MirrorSpeaker</Product>
     <Title>MirrorSpeaker</Title>
     <Company>MirrorSpeaker Project</Company>

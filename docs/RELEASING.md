@@ -65,7 +65,7 @@ Increase the version instead.
 Set the release values at the start of the PowerShell session:
 
 ```powershell
-$Version = '1.4.0'
+$Version = '1.4.2'
 $Publisher = 'MirrorSpeaker Project'
 $PublisherUrl = 'https://github.com/codyabraham/MirrorSpeaker'
 ```
