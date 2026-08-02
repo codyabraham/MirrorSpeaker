@@ -63,9 +63,8 @@
 
                         <TextBlock Text="What do you want to receive?" FontWeight="SemiBold" FontSize="13" Margin="0,14,0,7" />
                         <ComboBox x:Name="ReceiverModeComboBox" Height="38" Padding="10,5" SelectionChanged="ReceiverModeComboBox_SelectionChanged">
-                            <ComboBoxItem Content="Screen + audio" />
+                            <ComboBoxItem Content="AirPlay" />
                             <ComboBoxItem Content="Bluetooth speaker — best for TikTok" />
-                            <ComboBoxItem Content="AirPlay speaker — synchronized video" />
                         </ComboBox>
                         <TextBlock x:Name="ReceiverModeDescriptionText" Foreground="{StaticResource MutedBrush}" FontSize="12"
                                    Margin="0,6,0,0" TextWrapping="Wrap" />
@@ -76,13 +75,6 @@
                                 <StackPanel x:Name="MirroringOptionsPanel">
                                     <CheckBox x:Name="LowLatencyCheckBox" Content="Low-latency mode for responsive mirroring" IsChecked="True" Checked="Settings_Changed" Unchecked="Settings_Changed" />
                                     <CheckBox x:Name="FullscreenCheckBox" Content="Open the mirrored screen full screen" Checked="Settings_Changed" Unchecked="Settings_Changed" />
-                                </StackPanel>
-                                <StackPanel x:Name="AudioOptionsPanel" Visibility="Collapsed">
-                                    <CheckBox x:Name="SynchronizeAudioCheckBox"
-                                              Content="Keep video and PC audio in sync (recommended)"
-                                              IsChecked="True" Checked="Settings_Changed" Unchecked="Settings_Changed" />
-                                    <TextBlock x:Name="AudioSyncDescriptionText" Foreground="{StaticResource MutedBrush}" FontSize="12"
-                                               Margin="22,3,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel x:Name="BluetoothOptionsPanel" Visibility="Collapsed">

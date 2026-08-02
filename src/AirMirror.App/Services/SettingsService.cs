@@ -35,6 +35,9 @@ internal sealed class SettingsService
             settings.DeviceName = ProductIdentity.MigrateLegacyDefaultDeviceName(
                 settings.DeviceName,
                 Environment.MachineName);
+            settings.ContentMode = settings.ContentMode == AppReceiverMode.BluetoothAudioOnly
+                ? AppReceiverMode.BluetoothAudioOnly
+                : AppReceiverMode.ScreenAndAudio;
             return settings;
         }
         catch (JsonException)
@@ -60,7 +63,6 @@ internal sealed class SettingsService
             LowLatency = settings.LowLatency,
             Fullscreen = settings.Fullscreen,
             ContentMode = settings.ContentMode,
-            SynchronizeAudioWithClientVideo = settings.SynchronizeAudioWithClientVideo,
             BluetoothDeviceId = settings.BluetoothDeviceId
         };
 

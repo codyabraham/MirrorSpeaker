@@ -53,7 +53,7 @@ else {
     $Version = $Version.Trim()
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?$') {
-    throw "Version must contain three or four numeric parts, for example 1.4.2."
+    throw "Version must contain three or four numeric parts, for example 1.4.3."
 }
 
 $dotnet = Get-Command -Name 'dotnet.exe' -CommandType Application -ErrorAction Stop

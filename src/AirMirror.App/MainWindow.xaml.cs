@@ -69,10 +69,6 @@ public partial class MainWindow : Window
         RequirePinCheckBox.IsChecked = _settings.RequirePin;
         LowLatencyCheckBox.IsChecked = _settings.LowLatency;
         FullscreenCheckBox.IsChecked = _settings.Fullscreen;
-        SynchronizeAudioCheckBox.IsChecked = _settings.SynchronizeAudioWithClientVideo;
-        _settings.ContentMode = Enum.IsDefined(_settings.ContentMode)
-            ? _settings.ContentMode
-            : AppReceiverMode.ScreenAndAudio;
         ReceiverModeComboBox.SelectedIndex = (int)_settings.ContentMode;
         UpdateReceiverModeUi();
     }
@@ -262,7 +258,6 @@ public partial class MainWindow : Window
 
         try
         {
-            var contentMode = SelectedAirPlayContentMode;
             var requirePin = RequirePinCheckBox.IsChecked == true;
             var pairingPin = requirePin
                 ? RandomNumberGenerator.GetInt32(1000, 10_000).ToString("D4", System.Globalization.CultureInfo.InvariantCulture)
@@ -271,23 +266,13 @@ public partial class MainWindow : Window
                 deviceName: deviceName,
                 basePort: 35000,
                 requirePin: requirePin,
-                fullscreen: contentMode == ReceiverContentMode.ScreenAndAudio && FullscreenCheckBox.IsChecked == true,
-                lowLatency: contentMode == ReceiverContentMode.ScreenAndAudio && LowLatencyCheckBox.IsChecked == true,
+                fullscreen: FullscreenCheckBox.IsChecked == true,
+                lowLatency: LowLatencyCheckBox.IsChecked == true,
                 videoSink: VideoSink.Direct3D11,
                 audioSink: AudioSink.Wasapi,
                 pairingPin: pairingPin,
-                contentMode: contentMode,
-                synchronizeAudioWithClientVideo: SynchronizeAudioCheckBox.IsChecked == true);
-            if (contentMode == ReceiverContentMode.AudioOnly)
-            {
-                AppendLog(SynchronizeAudioCheckBox.IsChecked == true
-                    ? "Starting speaker mode with iPhone video lip-sync enabled; AirPlay controls may respond after a short buffer."
-                    : "Starting speaker mode with faster controls; video left on the iPhone may lead the PC audio.");
-            }
-            else
-            {
-                AppendLog("Starting screen and audio receiver mode.");
-            }
+                contentMode: ReceiverContentMode.ScreenAndAudio);
+            AppendLog("Starting AirPlay receiver mode.");
             await _receiver.StartAsync(_enginePath, launchSettings);
 
             if (pairingPin is not null)
@@ -468,7 +453,6 @@ public partial class MainWindow : Window
     {
         var mode = SelectedReceiverMode;
         var bluetooth = mode == AppReceiverMode.BluetoothAudioOnly;
-        var airPlayAudioOnly = mode == AppReceiverMode.AirPlayAudioOnly;
         var selectedBluetoothDevice = BluetoothDeviceComboBox.SelectedItem as BluetoothAudioDevice;
         var hasBluetoothDevice = selectedBluetoothDevice is not null;
         var phoneIsConnected = selectedBluetoothDevice?.IsWindowsConnected == true;
@@ -499,12 +483,10 @@ public partial class MainWindow : Window
                     ? phoneIsConnected
                         ? "Windows already reports the iPhone connected. Start Bluetooth speaker mode to open its audio profile; no pairing is needed."
                         : "Windows found the paired iPhone, but it is not currently connected. Start Bluetooth speaker mode to open its audio link."
-                    : airPlayAudioOnly
-                        ? "Start AirPlay speaker mode, then choose this PC from the iPhone audio menu."
-                        : "Start the receiver, then choose this PC from Screen Mirroring on your iPhone.";
+                    : "Start the receiver, then choose this PC from Screen Mirroring on your iPhone.";
                 PrimaryButton.Content = bluetooth
                     ? "Start Bluetooth speaker"
-                    : airPlayAudioOnly ? "Start AirPlay speaker" : "Start receiver";
+                    : "Start receiver";
                 PrimaryButton.IsEnabled = true;
                 SetOptionsEnabled(true);
                 PairingCard.Visibility = Visibility.Collapsed;
@@ -516,9 +498,7 @@ public partial class MainWindow : Window
                     ? phoneIsConnected
                         ? "Reusing the connected iPhone and opening its Bluetooth audio profile…"
                         : "Turning on Windows Bluetooth speaker mode and connecting to the iPhone…"
-                    : airPlayAudioOnly
-                        ? "Advertising this PC as an AirPlay speaker…"
-                        : "Advertising this PC on your Wi-Fi network…";
+                    : "Advertising this PC on your Wi-Fi network…";
                 PrimaryButton.Content = bluetooth ? "Stop Bluetooth speaker" : "Stop receiver";
                 PrimaryButton.IsEnabled = true;
                 break;
@@ -543,20 +523,16 @@ public partial class MainWindow : Window
                 }
 
                 SetStatusBadge("Ready", BadgeKind.Success);
-                ReceiverSummaryText.Text = airPlayAudioOnly
-                        ? "Ready for audio. In Control Center, use the AirPlay button in the Now Playing card."
-                        : "Ready for your iPhone. Open Control Center and tap Screen Mirroring.";
+                ReceiverSummaryText.Text = "Ready for your iPhone. Open Control Center and tap Screen Mirroring.";
                 PrimaryButton.Content = "Stop receiver";
                 PrimaryButton.IsEnabled = true;
                 break;
 
             case ReceiverState.Mirroring:
-                SetStatusBadge(bluetooth ? "Bluetooth connected" : airPlayAudioOnly ? "Playing audio" : "Mirroring", BadgeKind.Success);
+                SetStatusBadge(bluetooth ? "Bluetooth connected" : "Mirroring", BadgeKind.Success);
                 ReceiverSummaryText.Text = bluetooth
                     ? BuildBluetoothConnectedSummary()
-                    : airPlayAudioOnly
-                        ? "Your iPhone audio is playing through this PC's current Windows output."
-                        : "Your iPhone is connected. The mirrored screen is open in a separate window.";
+                    : "Your iPhone is connected. The mirrored screen is open in a separate window.";
                 PrimaryButton.Content = bluetooth ? "Stop Bluetooth speaker" : "Stop receiver";
                 PairingCard.Visibility = Visibility.Collapsed;
                 break;
@@ -585,7 +561,6 @@ public partial class MainWindow : Window
         }
 
         UpdateInstructionName();
-        UpdateAudioSyncDescription();
         _saveTimer.Stop();
         _saveTimer.Start();
     }
@@ -747,7 +722,6 @@ public partial class MainWindow : Window
         _settings.LowLatency = LowLatencyCheckBox.IsChecked == true;
         _settings.Fullscreen = FullscreenCheckBox.IsChecked == true;
         _settings.ContentMode = SelectedReceiverMode;
-        _settings.SynchronizeAudioWithClientVideo = SynchronizeAudioCheckBox.IsChecked == true;
         if (BluetoothDeviceComboBox.SelectedItem is BluetoothAudioDevice bluetoothDevice)
         {
             _settings.BluetoothDeviceId = bluetoothDevice.Id;
@@ -784,20 +758,16 @@ public partial class MainWindow : Window
             name = "this PC";
         }
 
-        InstructionDeviceNameText.Text = SelectedReceiverMode == AppReceiverMode.AirPlayAudioOnly
-            ? $"Choose “{name}” from the AirPlay speaker list."
-            : $"Choose “{name}”.";
+        InstructionDeviceNameText.Text = $"Choose “{name}”.";
     }
 
     private void UpdateReceiverModeUi()
     {
         var bluetooth = SelectedReceiverMode == AppReceiverMode.BluetoothAudioOnly;
-        var airPlayAudioOnly = SelectedReceiverMode == AppReceiverMode.AirPlayAudioOnly;
         AirPlayIdentityPanel.Visibility = bluetooth ? Visibility.Collapsed : Visibility.Visible;
         AirPlayOptionsPanel.Visibility = bluetooth ? Visibility.Collapsed : Visibility.Visible;
         BluetoothOptionsPanel.Visibility = bluetooth ? Visibility.Visible : Visibility.Collapsed;
-        MirroringOptionsPanel.Visibility = !bluetooth && !airPlayAudioOnly ? Visibility.Visible : Visibility.Collapsed;
-        AudioOptionsPanel.Visibility = airPlayAudioOnly ? Visibility.Visible : Visibility.Collapsed;
+        MirroringOptionsPanel.Visibility = bluetooth ? Visibility.Collapsed : Visibility.Visible;
         InstructionNoteBorder.Visibility = bluetooth ? Visibility.Collapsed : Visibility.Visible;
         OpenSettingsButton.Content = bluetooth ? "Open sound settings" : "Open network settings";
 
@@ -811,20 +781,9 @@ public partial class MainWindow : Window
             InstructionStepTwoDetailText.Text = "MirrorSpeaker asks Windows to enable and open its separate audio receiver profile.";
             InstructionStepThreeTitleText.Text = "Play TikTok normally";
         }
-        else if (airPlayAudioOnly)
-        {
-            ReceiverModeDescriptionText.Text = "Play iPhone audio through this PC over Wi-Fi AirPlay, with optional video synchronization.";
-            InstructionConnectionRequirementText.Text = "Keep your iPhone and PC on the same Wi-Fi network.";
-            InstructionStepOneTitleText.Text = "Start the AirPlay speaker";
-            InstructionStepOneDetailText.Text = "Wait until the status says Ready.";
-            InstructionStepTwoTitleText.Text = "Open the audio output menu";
-            InstructionStepTwoDetailText.Text = "In Control Center, tap the AirPlay button in the Now Playing card.";
-            InstructionStepThreeTitleText.Text = "Choose this PC as the speaker";
-            InstructionNoteText.Text = "TikTok may stop its local picture for any AirPlay route. Use Bluetooth speaker mode when the video must stay on the iPhone.";
-        }
         else
         {
-            ReceiverModeDescriptionText.Text = "Mirror the iPhone display and play its audio through this PC.";
+            ReceiverModeDescriptionText.Text = "Mirror the iPhone display and play its audio through this PC using AirPlay.";
             InstructionConnectionRequirementText.Text = "Keep your iPhone and PC on the same Wi-Fi network.";
             InstructionStepOneTitleText.Text = "Start the receiver";
             InstructionStepOneDetailText.Text = "Wait until the status says Ready.";
@@ -834,7 +793,6 @@ public partial class MainWindow : Window
             InstructionNoteText.Text = "Some protected streaming video cannot be mirrored. Your iPhone screen, photos, presentations, games, and most apps work normally.";
         }
 
-        UpdateAudioSyncDescription();
         UpdateInstructionName();
     }
 
@@ -876,24 +834,11 @@ public partial class MainWindow : Window
                 "The iPhone is connected by Bluetooth. Its audio will use the current Windows output."
         };
 
-    private void UpdateAudioSyncDescription()
-    {
-        AudioSyncDescriptionText.Text = SynchronizeAudioCheckBox.IsChecked == true
-            ? "Best for videos: the iPhone holds its picture to match the PC sound. Play, pause, and seeking may react about two seconds later."
-            : "Faster controls for music and podcasts, but video on the iPhone may move before you hear the matching sound.";
-    }
-
     private AppReceiverMode SelectedReceiverMode => ReceiverModeComboBox.SelectedIndex switch
     {
         1 => AppReceiverMode.BluetoothAudioOnly,
-        2 => AppReceiverMode.AirPlayAudioOnly,
         _ => AppReceiverMode.ScreenAndAudio
     };
-
-    private ReceiverContentMode SelectedAirPlayContentMode =>
-        SelectedReceiverMode == AppReceiverMode.AirPlayAudioOnly
-            ? ReceiverContentMode.AudioOnly
-            : ReceiverContentMode.ScreenAndAudio;
 
     private bool IsAnyReceiverRunning => _receiver.IsRunning || _bluetoothAudio.IsRunning;
 
@@ -918,7 +863,6 @@ public partial class MainWindow : Window
         RequirePinCheckBox.IsEnabled = enabled;
         LowLatencyCheckBox.IsEnabled = enabled;
         FullscreenCheckBox.IsEnabled = enabled;
-        SynchronizeAudioCheckBox.IsEnabled = enabled;
         BluetoothDeviceComboBox.IsEnabled = enabled;
         RefreshBluetoothDevicesButton.IsEnabled = enabled && !_refreshingBluetoothDevices;
         OpenBluetoothSettingsButton.IsEnabled = enabled;

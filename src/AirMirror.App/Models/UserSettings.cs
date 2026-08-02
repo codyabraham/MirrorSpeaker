@@ -5,8 +5,7 @@ namespace AirMirror.App.Models;
 internal enum AppReceiverMode
 {
     ScreenAndAudio = 0,
-    BluetoothAudioOnly = 1,
-    AirPlayAudioOnly = 2
+    BluetoothAudioOnly = 1
 }
 
 internal sealed class UserSettings
@@ -19,11 +18,9 @@ internal sealed class UserSettings
 
     public bool Fullscreen { get; set; }
 
-    // Values 0 and 1 intentionally migrate settings from earlier releases: the old
-    // audio-only selection becomes Bluetooth, which keeps phone video local.
+    // Values 0 and 1 remain stable across releases. The retired AirPlay-speaker
+    // value 2 is migrated to normal AirPlay when settings are loaded.
     public AppReceiverMode ContentMode { get; set; } = AppReceiverMode.ScreenAndAudio;
-
-    public bool SynchronizeAudioWithClientVideo { get; set; } = true;
 
     public string BluetoothDeviceId { get; set; } = string.Empty;
 }

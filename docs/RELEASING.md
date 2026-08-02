@@ -65,7 +65,7 @@ Increase the version instead.
 Set the release values at the start of the PowerShell session:
 
 ```powershell
-$Version = '1.4.2'
+$Version = '1.4.3'
 $Publisher = 'MirrorSpeaker Project'
 $PublisherUrl = 'https://github.com/codyabraham/MirrorSpeaker'
 ```
@@ -621,7 +621,7 @@ the files as unsigned.
 - Confirm the user-initiated build completes on the clean PC and that closing
   or cancelling the app does not falsely report a successful installation.
 - Put the PC on a trusted Private Wi-Fi network.
-- Start screen-receiver mode and approve the one-time firewall prompt.
+- Start AirPlay mode and approve the one-time firewall prompt.
 - Confirm the PC appears in the iPhone's Screen Mirroring list.
 - Complete PIN pairing, then verify moving video and audio.
 - Stop and restart the receiver and confirm it is discoverable again.

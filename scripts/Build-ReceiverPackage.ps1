@@ -637,7 +637,7 @@ try {
         notes = @(
             'PE imports do not expose every runtime-loaded media component; the explicit GStreamer plug-in roots are therefore part of this manifest.',
             'The package intentionally excludes the MSYS2 shell, compiler, headers, CMake, Ninja, package database, caches, and build tools.',
-            'Clean Windows 11 testing with actual iPhone screen-and-audio and audio-only sessions remains required before release.'
+            'Clean Windows 11 testing with an actual iPhone screen-and-audio session remains required before release.'
         )
     }
 

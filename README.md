@@ -14,7 +14,6 @@ The public source repository is
 - Streams iPhone audio to the PC over Bluetooth without opening a video window or invoking AirPlay.
 - Keeps TikTok video playing locally on the iPhone by using a real Bluetooth audio route.
 - Shows the active Windows audio output and automatically retries a briefly closed Bluetooth audio profile.
-- Retains an optional AirPlay speaker mode with timestamp synchronization for compatible apps.
 - Appears in the iPhone's **Control Center → Screen Mirroring** list under a configurable name.
 - Requires a one-time pairing code for new iPhones by default.
 - Offers low-latency and full-screen modes.
@@ -56,7 +55,7 @@ installer, portable ZIP, and SHA-256 checksum file with:
 
 ```powershell
 .\scripts\Build-Installer.ps1 `
-  -Version 1.4.2 `
+  -Version 1.4.3 `
   -Publisher "MirrorSpeaker Project" `
   -PublisherUrl "https://github.com/codyabraham/MirrorSpeaker"
 ```
@@ -91,15 +90,15 @@ silent-install, and clean-Windows test checklist.
 
 For TikTok or normal iPhone audio, choose **Bluetooth speaker — best for TikTok**. MirrorSpeaker checks Windows' Bluetooth-device records first, selects an already-connected iPhone, and reuses it without pairing again. **Connected** beside the phone describes its general Bluetooth link; only the **Bluetooth connected** status badge confirms that Windows also opened the separate audio receiver profile. If that profile does not open, MirrorSpeaker reports a failure and this PC will not appear as an iPhone audio destination yet. If the iPhone is not listed, click **Bluetooth settings**, confirm Windows shows it, return to MirrorSpeaker, and click **Refresh phones**. Bluetooth mode needs neither the AirPlay engine nor a Private Wi-Fi network or firewall exception.
 
-For screen mirroring or AirPlay speaker mode:
+For AirPlay screen mirroring:
 
 1. Open MirrorSpeaker and click **Install receiver engine**. This downloads a pinned UxPlay 1.74 source revision plus official MSYS2/GStreamer packages, builds the receiver locally, and verifies the required audio/video plugins. It does not require administrator access, but it can take several minutes and the full developer-toolchain installation can use roughly 3 GB.
 2. Click **Allow through firewall** and approve the Windows administrator prompt. The script adds inbound rules only for the Windows **Private** network profile; it does not disable Windows Firewall.
 3. Make sure the PC's current Wi-Fi network is marked **Private** in Windows Settings.
-4. Choose **Screen + audio** or **AirPlay speaker — synchronized video**, then start the receiver and wait for **Ready**.
-5. Use **Screen Mirroring** for screen mode or the AirPlay button in the Now Playing card for AirPlay speaker mode. If prompted, enter the four-digit code displayed in MirrorSpeaker.
+4. Choose **AirPlay**, then start the receiver and wait for **Ready**.
+5. Open **Screen Mirroring** on the iPhone and choose the name shown in MirrorSpeaker. If prompted, enter the four-digit code displayed in MirrorSpeaker.
 
-Only AirPlay modes require the iPhone and PC on the same local network. Guest Wi-Fi, VPNs, access-point/client isolation, or VLAN separation can block AirPlay discovery.
+AirPlay requires the iPhone and PC on the same local network. Guest Wi-Fi, VPNs, access-point/client isolation, or VLAN separation can block AirPlay discovery.
 
 ## Troubleshooting
 
@@ -118,9 +117,7 @@ If the iPhone connects but video or audio does not appear:
 - Disable **Low-latency mode** when watching video if audio/video synchronization matters more than responsiveness.
 - Protected content from the Apple TV app and other DRM-protected services cannot be decrypted by UxPlay. Ordinary screen content, photos, presentations, games, and most apps are the intended use.
 
-For TikTok, use **Bluetooth speaker — best for TikTok**. TikTok treats any AirPlay route as external playback and may stop its local picture even when the receiver advertises audio only. Bluetooth avoids that AirPlay classification. Windows does not expose codec or buffer controls for this receiver API, so a small wireless delay remains. Using another wireless headset or speaker creates two radio hops and can be less reliable than the PC's built-in speakers or wired headphones. If Windows actually closes the Bluetooth audio profile, MirrorSpeaker makes three bounded reconnection attempts before asking for attention.
-
-The optional AirPlay speaker mode remains useful for apps that handle AirPlay correctly. Leave **Keep video and PC audio in sync** enabled when watching video: the iPhone buffers its picture to match the PC audio, which can make play, pause, and seeking respond about two seconds later.
+For TikTok, use **Bluetooth speaker — best for TikTok**. TikTok may treat AirPlay screen mirroring as external playback and stop its local picture. Bluetooth avoids that AirPlay classification. Windows does not expose codec or buffer controls for this receiver API, so a small wireless delay remains. Using another wireless headset or speaker creates two radio hops and can be less reliable than the PC's built-in speakers or wired headphones. If Windows actually closes the Bluetooth audio profile, MirrorSpeaker makes three bounded reconnection attempts before asking for attention.
 
 ## Verification
 
